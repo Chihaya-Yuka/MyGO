@@ -1,28 +1,60 @@
 package cosine
 
 import (
-	"errors"
 	"fmt"
+	"gonum.org/v1/gonum/mat"
+	"gorgonia.org/gorgonia"
+	"strings"
+	"sync"
+	"unicode"
 )
 
-// CosineSimilarity calculates the cosine similarity between two vectors.
-func CosineSimilarity(v1, v2 Vector) (float64, error) {
-	dotProduct := v1.DotProduct(v2)
-	magnitude1 := v1.Magnitude()
-	magnitude2 := v2.Magnitude()
+// Cache to store previously calculated vectors.
+var vectorCache sync.Map
 
-	if magnitude1 == 0 || magnitude2 == 0 {
-		return 0, errors.New("magnitude of one or both vectors is zero")
-	}
-
-	similarity := dotProduct / (magnitude1 * magnitude2)
-	return similarity, nil
+// Vector represents a vector in n-dimensional space.
+type Vector struct {
+	mat.Sparse
 }
 
-// TextSimilarity calculates the cosine similarity between two texts by converting them into vectors first.
-func TextSimilarity(text1, text2 string) (float64, error) {
-	vector1 := NewVectorFromText(text1)
-	vector2 := NewVectorFromText(text2)
+// NewVectorFromText creates a new vector from a given text by tokenizing it into words and counting their occurrences.
+func NewVectorFromText(text string) *Vector {
+	// Check cache
+	if cachedVec, ok := vectorCache.Load(text); ok {
+		return cachedVec.(*Vector)
+	}
 
-	return CosineSimilarity(vector1, vector2)
+	// Tokenize the text into words.
+	words := strings.FieldsFunc(text, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+
+	// Create a sparse vector.
+	vector := &Vector{
+		Sparse: mat.NewSparse(0, len(words)),
+	}
+	for i, word := range words {
+		word = strings.ToLower(word)
+		vector.Set(i, 0, 1.0)
+	}
+
+	// Store the vector in the cache
+	vectorCache.Store(text, vector)
+
+	return vector
+}
+
+// DotProduct calculates the dot product of two vectors.
+func (v *Vector) DotProduct(other *Vector) float64 {
+	return mat.Dot(v, other)
+}
+
+// Magnitude calculates the magnitude (Euclidean norm) of a vector.
+func (v *Vector) Magnitude() float64 {
+	return mat.Norm(v, 2)
+}
+
+// String returns a string representation of the vector.
+func (v *Vector) String() string {
+	return fmt.Sprintf("%v", v.RawMatrix())
 }
